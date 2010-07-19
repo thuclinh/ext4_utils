@@ -18,6 +18,10 @@
  * La opción x tampoco está implementada
  * La opción w no se va a implementar, por problemas de compatibilidad
  * T y P dan warnings debido al tamaño. Usando C99 (-std=c99) se evitan
+ * no se está detectando si hay overflows de los 64 bits. Se detectan algunos casos, pero no todos.
+ * Sólo si el resultado de una operación es menor que alguno de sus operandos, p.ej. 16384P se detecta, pero 50000000000000P
+ * no (y requiere 99 bits el resultado)
+ * ok, parece estar arreglado: resultado=sum*mult;if(resultado/sum<mult) overflow;
  **/
 
 /*
@@ -29,13 +33,13 @@
        variables de entorno, pero para dd es fijo.)
  *
  * 123MD:
- * MD equivale a pone 1000000, o 1MD
+ * MD equivale a poner 1000000, o 1MD
  * */
 
 
 int size2ull(unsigned long long *res, const char *string)
 {
-	unsigned long long sum=0, mult=0;
+	unsigned long long sum=0, mult=0, ovr;
 	unsigned short st=0;
 	assert(res && string);
 
@@ -123,8 +127,11 @@ int size2ull(unsigned long long *res, const char *string)
 */
 			default:
 				if(isdigit(*string)){
+					ovr=sum;
 					sum*=10;
 					sum+=*string-'0';
+					if(sum<ovr) //overflow
+						return -1;
 				}else
 					return -1;
 			}
@@ -142,8 +149,11 @@ int size2ull(unsigned long long *res, const char *string)
 				else
 					if(!mult) /*1234567890*/
 						*res=sum;
-					else /*3M*/
+					else{ /*3M*/
 						*res=sum*mult;
+						if(*res/sum<mult) //overflow
+							return -1;
+					}
 				return 0;
 				break;
 			default:

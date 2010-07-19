@@ -57,7 +57,7 @@ struct {
  * dice que desborda, con la segunda sólo dice que es unsigned en C90 y sólo en C90*/
 
 char *parselist[]={
-		"e","1e","k1"
+		"e","1e","k1", "16384P", "50000000000000P"
 };
 
 short check_fn(const char *str, unsigned long long expected)

@@ -34,7 +34,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "size2ull.h"
+#include "size2ull/size2ull.h"
 
 typedef struct {
 	short verb;
@@ -44,11 +44,37 @@ typedef struct {
 } config_t;
 #define VERB_MAX 1
 
+int parseperm(mode_t *perm, const char *string);
+
+int parseperm(mode_t *perm, const char *string)
+{
+	int i=0;
+	mode_t tmp=0;
+	assert(perm && string);
+
+	while(*string){
+		if(4==i || !isdigit(*string) || *string>'7')
+			return -1;
+
+		tmp<<=3;
+		tmp|=*string-'0';
+
+		string++;
+		i++;
+	}
+	if(i<3)
+		return -1;
+
+	*perm=tmp;
+	return 0;
+}
+
 
 int parse_args(int argc, char **argv, config_t *cfg)
 {
 	char ch;
 	unsigned long long sz;
+	mode_t perm;
 
 	assert(cfg && argv);
 
@@ -57,7 +83,7 @@ int parse_args(int argc, char **argv, config_t *cfg)
 	cfg->file=NULL;
 	cfg->perm=0;
 
-	while(-1!=(ch=getopt(argc, argv, "hqvs:"))){
+	while(-1!=(ch=getopt(argc, argv, "hqvs:p:"))){
 		switch(ch){
 		case 'q':
 			if(cfg->verb > 0){
@@ -76,26 +102,35 @@ int parse_args(int argc, char **argv, config_t *cfg)
 				cfg->verb--;
 			break;
 		case 's':
-			printf("%s\n", optarg);
+			printf("pre-size: %s\n", optarg); //FIXME
 			if(-1==size2ull(&sz, optarg)){
 				fprintf(stderr,"Bad arguments: size is bogus: \"%s\"\n", optarg);
 				exit(EXIT_FAILURE);
 			}
+			printf("post-size: %llu\n", sz); //FIXME
+			cfg->size=sz;
+			break;
+		case 'p':
+			printf("pre-perm: %s\n", optarg); //FIXME
+			if(-1==parseperm(&perm, optarg)){
+				fprintf(stderr,"Bad arguments: creation mode is bogus: \"%s\"\n", optarg);
+				exit(EXIT_FAILURE);
+			}
+			printf("post-perm: %u\n", perm); //FIXME
+			cfg->perm=perm;
 			break;
 		case 'h':
-			printf("texto de ayuda\n"); //FIX
+			printf("texto de ayuda\n"); //FIXME
 			exit(EXIT_SUCCESS);
 			break;
 		case '?':
-			fprintf(stderr,"usa la ayuda\n");//FIX
+			fprintf(stderr,"usa la ayuda\n");//FIXME
 			exit(EXIT_FAILURE);
 			break;
 		}
 	}
 
 	return optind;
-
-	return 0;
 }
 
 int main(int argc, char **argv)
@@ -106,9 +141,25 @@ int main(int argc, char **argv)
 	int ret;
 	config_t config;
 
-	parse_args(argc, argv, &config);
+	i=parse_args(argc, argv, &config);
+	if(argc==i){
+		fprintf(stderr,"Bad arguments: no files given\n");
+		exit(EXIT_FAILURE);
+	}
+
+	for(;i<argc;i++){
+		config.file=argv[i];
+		if(-1==alloca_file(&config)){
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	printf("config.verb = %d\n",config.verb);
+	printf("config.size = %llu\n",config.size);
+	printf("config.perm = %d\n",config.perm);
+	printf("config.file = %s\n",config.file);
+
+	printf("sizeof(off_t)=%d\n",sizeof(off_t)); /* -D_FILE_OFFSET_BITS=64 al compilador nos da off_t de 64bits*/
 
 	exit(EXIT_SUCCESS);
 
