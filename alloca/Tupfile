@@ -1,0 +1,3 @@
+: foreach size2ull/size2ull.c |> gcc -ggdb -Wall -std=c99 -c %f -o %o |> %B.o
+: foreach *.c |> gcc -ggdb -Wall -D_FILE_OFFSET_BITS=64 -c %f -o %o |> %B.o
+: *.o |> gcc -ggdb %f -o %o |> alloca

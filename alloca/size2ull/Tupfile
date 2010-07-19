@@ -1,0 +1,2 @@
+: foreach *.c |> gcc -ggdb -Wall -std=c99 -c %f -o %o |> %B.o
+: *.o |> gcc -ggdb %f -o %o |> test_size2ull
