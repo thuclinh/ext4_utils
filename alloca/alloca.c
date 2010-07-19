@@ -42,9 +42,11 @@ typedef struct {
 	unsigned long long size;
 	mode_t perm;
 } config_t;
-#define VERB_MAX 1
+enum {VERB_QUIET=-1, VERB_NORMAL, VERB_VERB, VERB_MAX};
 
 int parseperm(mode_t *perm, const char *string);
+int alloca_file(const config_t *cfg);
+int parse_args(int argc, char **argv, config_t *cfg);
 
 int parseperm(mode_t *perm, const char *string)
 {
@@ -69,7 +71,10 @@ int parseperm(mode_t *perm, const char *string)
 	return 0;
 }
 
-
+/*
+ * Reads argv and argc, and stores configuration by reference in cfg: verbosity, file size and permissions.
+ * Return 0 if everythung is ok, exit() if not.
+ */
 int parse_args(int argc, char **argv, config_t *cfg)
 {
 	char ch;
@@ -81,7 +86,7 @@ int parse_args(int argc, char **argv, config_t *cfg)
 	cfg->verb=0;
 	cfg->size=0;
 	cfg->file=NULL;
-	cfg->perm=0;
+	parseperm(&cfg->perm,"600");
 
 	while(-1!=(ch=getopt(argc, argv, "hqvs:p:"))){
 		switch(ch){
@@ -102,21 +107,21 @@ int parse_args(int argc, char **argv, config_t *cfg)
 				cfg->verb--;
 			break;
 		case 's':
-			printf("pre-size: %s\n", optarg); //FIXME
 			if(-1==size2ull(&sz, optarg)){
 				fprintf(stderr,"Bad arguments: size is bogus: \"%s\"\n", optarg);
 				exit(EXIT_FAILURE);
 			}
-			printf("post-size: %llu\n", sz); //FIXME
+			if(!sz){
+				fprintf(stderr,"Bad arguments: size must be greater than zero\n");
+				exit(EXIT_FAILURE);
+			}
 			cfg->size=sz;
 			break;
 		case 'p':
-			printf("pre-perm: %s\n", optarg); //FIXME
 			if(-1==parseperm(&perm, optarg)){
 				fprintf(stderr,"Bad arguments: creation mode is bogus: \"%s\"\n", optarg);
 				exit(EXIT_FAILURE);
 			}
-			printf("post-perm: %u\n", perm); //FIXME
 			cfg->perm=perm;
 			break;
 		case 'h':
@@ -133,20 +138,59 @@ int parse_args(int argc, char **argv, config_t *cfg)
 	return optind;
 }
 
+/*
+ * Receives parameters by reference with cfg: permissions, size, filename and verbosity
+ * Creates cfg->file with cfg->perm permissions and allocates cfg->size bytes.
+ *
+ * Return 0 if everything is ok, -1 if not. Prints error/success messages depending on cfg->verb
+ */
+int alloca_file(const config_t *cfg)
+{
+	int fd;
+
+	assert(cfg);
+
+	fd=open(cfg->file,O_CREAT|O_EXCL|O_WRONLY,cfg->perm);
+	if(-1==fd){
+		if(cfg->verb >= VERB_QUIET) perror("alloca_file():open(): error creating file");
+		return -1;
+	}
+
+	errno=posix_fallocate(fd,0,cfg->size);
+	if(errno){
+		if(cfg->verb >= VERB_QUIET) perror("alloca_file():posix_fallocate(): error asking for space");
+		return -1;
+	}
+
+	if(-1==close(fd)){
+		if(cfg->verb > VERB_QUIET) perror("alloca_file():close()");
+		return -1;
+	}
+
+	if(cfg->verb>VERB_QUIET)
+		printf("%s: allocated successfully.\n", cfg->file);
+
+	return 0;
+}
+
+
 int main(int argc, char **argv)
 {
-	char *file=argv[1];
-	off_t len=1024*1024*1024;
-	int fd;
-	int ret;
+	int i;
 	config_t config;
 
+	/* take options and validate them */
 	i=parse_args(argc, argv, &config);
 	if(argc==i){
 		fprintf(stderr,"Bad arguments: no files given\n");
 		exit(EXIT_FAILURE);
 	}
+	if(!config.size){
+		fprintf(stderr,"Bad arguments: size (-s) is mandatory\n");
+		exit(EXIT_FAILURE);
+	}
 
+	/* for each asked file, allocate it */
 	for(;i<argc;i++){
 		config.file=argv[i];
 		if(-1==alloca_file(&config)){
@@ -154,41 +198,5 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("config.verb = %d\n",config.verb);
-	printf("config.size = %llu\n",config.size);
-	printf("config.perm = %d\n",config.perm);
-	printf("config.file = %s\n",config.file);
-
-	printf("sizeof(off_t)=%d\n",sizeof(off_t)); /* -D_FILE_OFFSET_BITS=64 al compilador nos da off_t de 64bits*/
-
 	exit(EXIT_SUCCESS);
-
-	fd=open(file,O_CREAT|O_EXCL|O_WRONLY,S_IREAD|S_IWRITE);
-	if(-1==fd){
-		perror("Error al crear el fichero");
-		exit(EXIT_FAILURE);
-	}
-
-	ret=posix_fallocate(fd,0,len);
-	if(ret){
-		errno=ret;
-		perror("Error al reservar espacio para el fichero");
-		exit(EXIT_FAILURE);
-	}
-
-
-	/*ret=fallocate(fd,0,0,len);
-	if(-1==ret){
-		perror("Error al reservar espacio para el fichero");
-		exit(EXIT_FAILURE);
-	}
-	*/
-
-	if(-1==close(fd)){
-		perror("Error al cerrar el fichero");
-		exit(EXIT_FAILURE);
-	}
-
-	printf("%s: fichero creado con éxito\n", file);
-
 }
