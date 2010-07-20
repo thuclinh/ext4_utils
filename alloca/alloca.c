@@ -12,6 +12,7 @@
  * Write help/syntax
  * Write doc, web, publish: freshmeat, etc.
  * License
+ * allow -s 0
  *
  * fallocate <-> posix_fallocate, estudiar y escribir: métodos, argumentos, sistemas de ficheros, tiempos, contenido, filefrag
  * usar fallocate (linux specific) o posix_fallocate?? Con las .h y fallocate hay algún problemilla
@@ -63,7 +64,7 @@ int alloca_file(const config_t *cfg);
  * Return value: 0 if everything right, -1 if not
  *
  * Warning: when open() uses these permissions, will do a (permissons & ~umask). For example,
- * if permissions are 666 and umask 022, result will be 644. With 666 and the same umask, result is 755
+ * if permissions are 666 and umask 022, result will be 644. With 777 and the same umask, result is 755
  */
 int parseperm(mode_t *perm, const char *string)
 {
@@ -174,10 +175,12 @@ int alloca_file(const config_t *cfg)
 		return -1;
 	}
 
-	errno=posix_fallocate(fd,0,cfg->size);
-	if(errno){
-		if(cfg->verb >= VERB_QUIET) perror("alloca_file():posix_fallocate(): error asking for space");
-		return -1;
+	if(cfg->size) {
+		errno=posix_fallocate(fd,0,cfg->size);
+		if(errno){
+			if(cfg->verb >= VERB_QUIET) perror("alloca_file():posix_fallocate(): error asking for space");
+			return -1;
+		}
 	}
 
 	if(-1==close(fd)){
@@ -186,7 +189,7 @@ int alloca_file(const config_t *cfg)
 	}
 
 	if(cfg->verb>VERB_QUIET)
-		printf("%s: allocated successfully.\n", cfg->file);
+		printf("allocated successfully.\n");
 
 	return 0;
 }
@@ -203,14 +206,13 @@ int main(int argc, char **argv)
 		fprintf(stderr,"Bad arguments: no files given\n");
 		exit(EXIT_FAILURE);
 	}
-	if(!config.size){
-		fprintf(stderr,"Bad arguments: size (-s) is mandatory\n");
-		exit(EXIT_FAILURE);
-	}
 
 	/* for each asked file, allocate it */
 	for(;i<argc;i++){
 		config.file=argv[i];
+		if(config.verb>VERB_QUIET){
+			printf("%s: ", config.file);fflush(stdout);
+		}
 		if(-1==alloca_file(&config))
 			exit(EXIT_FAILURE);
 	}
