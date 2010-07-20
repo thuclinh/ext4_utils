@@ -1,16 +1,19 @@
 /*
- * alloc.c
+ * alloca.c
  *
  *  Created on: 18/07/2010
- *      Author: pablo
+ *      Author: Pablo Figue <pablo.figue usal es>
  */
 
-/* FIXes
- * en caso de error, cerrar el fichero antes de salir
- * en caso de error, ¿borrar el fichero antes de salir?
- * trapear SIGs?
- * leer argumentos de la línea de órdenes: {-h, -s <size>, -q, -p <permisos> } [lista nombres...]
+/* FIXME
+ * Trap SIGnals?
+ * With error, close file if opened
+ * With error, remove file if opened? last file? all files?
+ * Write help/syntax
+ * Write doc, web, publish: freshmeat, etc.
+ * License
  *
+ * fallocate <-> posix_fallocate, estudiar y escribir: métodos, argumentos, sistemas de ficheros, tiempos, contenido, filefrag
  * usar fallocate (linux specific) o posix_fallocate?? Con las .h y fallocate hay algún problemilla
  * con posix_fallocate hay fragmentación (9 extents para 10M, 280 para 1G), y tarda un rato
  * la implementación de ext3 siempre reserva 0
@@ -18,10 +21,15 @@
  * con fallocate() sobre ext4, es instantáneo y sólo usa 10 extents para 1G
  * las md5 de los tres métodos son idénticas. Métodos: dd, posix_fallocate, fallocate
  * posix_fallocate funciona bien sobre ext4: instantáneo, sólo 10 extents y reserva 1G
- * */
+ */
+
+ /* NOTES
+  *
+  * Permissions could be omitted by umask
+  *
+  * */
 
 #define DEBUG
-//#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -29,13 +37,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-//#include <linux/falloc.h>
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
 
 #include "size2ull/size2ull.h"
 
+/* Config data */
 typedef struct {
 	short verb;
 	char *file;
@@ -43,15 +51,25 @@ typedef struct {
 	mode_t perm;
 } config_t;
 enum {VERB_QUIET=-1, VERB_NORMAL, VERB_VERB, VERB_MAX};
+#define PERM_DEFAULT "600"
 
 int parseperm(mode_t *perm, const char *string);
-int alloca_file(const config_t *cfg);
 int parse_args(int argc, char **argv, config_t *cfg);
+int alloca_file(const config_t *cfg);
 
+/*
+ * Parse string and returns (by reference) a mode_t variable with permissions for a file.
+ * Validates permissions: between 3 and 4 octal characters
+ * Return value: 0 if everything right, -1 if not
+ *
+ * Warning: when open() uses these permissions, will do a (permissons & ~umask). For example,
+ * if permissions are 666 and umask 022, result will be 644. With 666 and the same umask, result is 755
+ */
 int parseperm(mode_t *perm, const char *string)
 {
 	int i=0;
 	mode_t tmp=0;
+
 	assert(perm && string);
 
 	while(*string){
@@ -86,7 +104,7 @@ int parse_args(int argc, char **argv, config_t *cfg)
 	cfg->verb=0;
 	cfg->size=0;
 	cfg->file=NULL;
-	parseperm(&cfg->perm,"600");
+	parseperm(&cfg->perm,PERM_DEFAULT);
 
 	while(-1!=(ch=getopt(argc, argv, "hqvs:p:"))){
 		switch(ch){
@@ -193,9 +211,8 @@ int main(int argc, char **argv)
 	/* for each asked file, allocate it */
 	for(;i<argc;i++){
 		config.file=argv[i];
-		if(-1==alloca_file(&config)){
+		if(-1==alloca_file(&config))
 			exit(EXIT_FAILURE);
-		}
 	}
 
 	exit(EXIT_SUCCESS);
